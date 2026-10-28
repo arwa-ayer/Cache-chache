@@ -233,7 +233,7 @@
     const fb = state.feedback && (v.phase === 'guessing' || v.phase === 'placing')
       ? h('div', { class: 'fb ' + state.feedback.kind }, state.feedback.text)
       : null;
-    return h('div', { class: 'guide' },
+    return h('div', { class: 'guide', role: 'status', 'aria-live': 'polite' },
       h('p', { class: 'step' }, title),
       h('p', { class: 'hint' }, text),
       fb,
