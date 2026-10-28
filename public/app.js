@@ -110,7 +110,7 @@
     const g = h('div', { class: 'grid' + (small ? ' small' : '') });
     cells.forEach((c, i) => {
       const row = Math.floor(i / 4), col = i % 4;
-      const color = (row + col) % 2 ? 'pink' : 'yellow';
+      const color = (row + col) % 2 ? 'sand' : 'sage';
       const active = onCell && isClickable(c, i);
       g.append(h('button', {
         class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}`,
