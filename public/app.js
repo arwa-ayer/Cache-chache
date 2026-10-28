@@ -212,9 +212,12 @@
       if (v.you.done) {
         title = 'Plus d’erreurs';
         text = `Tu as épuisé tes ${v.maxMisses} erreurs. On attend la fin de la manche.`;
+      } else if (v.you.turn) {
+        title = 'C’est ton tour !';
+        text = `Touche une case de LA grille de ${oppName}. Objet = case verte, case vide = erreur.`;
       } else {
-        title = `Trouve les ${v.items} objets de ${oppName}`;
-        text = 'Touche une case de SA grille. Objet trouvé = case verte. Case vide = erreur.';
+        title = `Tour de ${oppName}`;
+        text = `Attends, ${oppName} joue. Ce sera ton tour juste après.`;
       }
       rows = [
         pill('Tes objets trouvés', dots(v.you.found, v.items)),
@@ -293,20 +296,22 @@
   }
 
   function scoreboard(v) {
+    const turnOn = v.phase === 'guessing';
     return h('header', { class: 'score' },
-      h('div', { class: 'who on' }, h('b', {}, v.you.name), h('span', {}, v.you.score)),
+      h('div', { class: 'who' + (turnOn && v.you.turn ? ' on' : '') }, h('b', {}, v.you.name), h('span', {}, v.you.score)),
       h('div', { class: 'round' }, `Manche ${v.round}/${v.totalRounds}`),
-      h('div', { class: 'who' }, h('b', {}, v.opponent ? v.opponent.name : '…'), h('span', {}, v.opponent ? v.opponent.score : 0)));
+      h('div', { class: 'who' + (turnOn && v.opponent && v.opponent.turn ? ' on' : '') },
+        h('b', {}, v.opponent ? v.opponent.name : '…'), h('span', {}, v.opponent ? v.opponent.score : 0)));
   }
 
   function updateGame(v) {
     const ended = v.phase === 'roundEnd' || v.phase === 'over';
     const opp = v.opponent;
 
-    put('score', JSON.stringify([v.you.name, v.you.score, opp && opp.name, opp && opp.score, v.round]),
+    put('score', JSON.stringify([v.you.name, v.you.score, opp && opp.name, opp && opp.score, v.round, v.you.turn, opp && opp.turn, v.phase]),
       () => scoreboard(v));
 
-    put('guide', JSON.stringify([v.phase, v.you.used, v.you.validated, v.you.found, v.you.misses, v.you.done,
+    put('guide', JSON.stringify([v.phase, v.you.turn, v.you.used, v.you.validated, v.you.found, v.you.misses, v.you.done,
       opp && [opp.found, opp.misses, opp.validated], state.feedback && state.feedback.text, state.selected]),
       () => guideBlock(v));
 
@@ -314,14 +319,14 @@
     const placing = v.phase === 'placing';
     const cells = placing ? v.myCells : v.targetCells;
     const interactive = placing ? (!v.you.validated && !!state.selected)
-      : v.phase === 'guessing' ? !v.you.done : false;
+      : v.phase === 'guessing' ? (v.you.turn && !v.you.done) : false;
     const onCell = interactive
       ? (i => placing
         ? (() => { const e = state.selected; state.selected = null; send({ type: 'place', cell: i, emoji: e }); })()
         : send({ type: 'guess', cell: i }))
       : null;
     const fresh = placing ? null : state.freshMiss;
-    put('main', JSON.stringify([v.phase, interactive, state.selected, cells, v.you.validated, fresh]), () => h('div', { class: 'zone' },
+    put('main', JSON.stringify([v.phase, interactive, v.you.turn, state.selected, cells, v.you.validated, fresh]), () => h('div', { class: 'zone' },
       h('p', { class: 'label' }, placing ? 'Ta cachette' : `Grille de ${opp ? opp.name : 'ton ami'}`),
       grid(cells, { onCell, fresh })));
 

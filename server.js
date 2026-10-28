@@ -56,7 +56,7 @@ function newCode() {
 }
 
 function newRoom(code) {
-  return { code, players: [], phase: 'waiting', round: 0, result: null, bot: false, botTimer: null };
+  return { code, players: [], phase: 'waiting', round: 0, result: null, bot: false, botTimer: null, turn: 0 };
 }
 
 // Chaque joueur a sa propre grille cachée (board) et ses propres devinettes (guesses) sur l'autre grille
@@ -90,16 +90,18 @@ function botPlace(bot) {
   bot.validated = true;
 }
 
-// Une devinette (joueur ou ordi)
+// Une devinette (joueur ou ordi), puis le tour passe à l'adversaire (sauf s'il a épuisé ses erreurs)
 function doGuess(room, me, opp, cell) {
   if (room.phase !== 'guessing' || me.done || me.guesses[cell]) return;
+  if (room.players[room.turn] !== me) return;
   if (opp.board[cell]) { me.guesses[cell] = 'hit'; me.found++; }
   else { me.guesses[cell] = 'miss'; me.misses++; }
-  if (me.found === ITEMS) endRound(room, me, 'found');
-  else if (me.misses >= MAX_MISSES) {
+  if (me.found === ITEMS) return endRound(room, me, 'found');
+  if (me.misses >= MAX_MISSES) {
     me.done = true;
-    if (opp.done) endRound(room, null, 'draw');
+    if (opp.done) return endRound(room, null, 'draw');
   }
+  room.turn = room.players.indexOf(opp.done ? me : opp);
 }
 
 // L'ordi devine une case toutes les 1,4 à 3 secondes
@@ -107,14 +109,14 @@ function kickBot(room) {
   if (!room.bot || room.botTimer || room.phase !== 'guessing') return;
   const bot = room.players.find(p => p.bot);
   const human = room.players.find(p => !p.bot);
-  if (!bot || !human || bot.done) return;
+  if (!bot || !human || bot.done || room.players[room.turn] !== bot) return;
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
-    if (room.phase !== 'guessing' || bot.done) return;
+    if (room.phase !== 'guessing' || bot.done || room.players[room.turn] !== bot) return;
     const hidden = Array.from({ length: GRID }, (_, i) => i).filter(i => !bot.guesses[i]);
     if (hidden.length) doGuess(room, bot, human, hidden[crypto.randomInt(hidden.length)]);
     broadcast(room);
-  }, 1400 + Math.random() * 1600);
+  }, 1200 + Math.random() * 1000);
 }
 
 function endRound(room, winner, reason) {
@@ -159,10 +161,12 @@ function viewFor(room, me) {
     you: {
       name: me.name, score: me.score, validated: me.validated, used: me.used.length,
       found: me.found, misses: me.misses, done: me.done,
+      turn: room.phase === 'guessing' && room.players[room.turn] === me,
     },
     opponent: opp ? {
       name: opp.name, score: opp.score, validated: opp.validated,
       found: opp.found, misses: opp.misses, done: opp.done,
+      turn: room.phase === 'guessing' && room.players[room.turn] === opp,
     } : null,
     options: ready && room.phase === 'placing' && !me.validated ? me.options : [],
     myCells: ready ? ownCells(room, me) : null,
@@ -232,11 +236,15 @@ function handleAction(ws, msg) {
       if (room.phase === 'placing' && !me.validated && me.used.length === ITEMS) {
         me.validated = true;
         me.options = [];
-        if (room.players.every(x => x.validated)) room.phase = 'guessing';
+        if (room.players.every(x => x.validated)) {
+          room.phase = 'guessing';
+          room.turn = (room.round - 1) % 2;   // la manche 1 commence par le 1er joueur, puis on alterne
+        }
       }
       break;
     case 'guess': {
       const { cell } = msg;
+      if (room.players[room.turn] !== me) break;
       if (Number.isInteger(cell) && cell >= 0 && cell < GRID) doGuess(room, me, opp, cell);
       break;
     }
@@ -285,6 +293,7 @@ function leave(ws) {
   room.phase = 'waiting';
   room.round = 0;
   room.result = null;
+  room.turn = 0;
   room.players.forEach(p => { p.score = 0; resetPlayer(p); });
   broadcast(room);
 }
