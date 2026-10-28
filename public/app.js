@@ -8,6 +8,7 @@
     selected: null,        // objet choisi pour la cachette (côté client)
     error: '',
     feedback: null,        // message court après une action : { kind, text }
+    freshMiss: null,       // case ratée à l'instant (animation du cœur brisé)
   };
   let ws = null;
   let root = null;         // conteneur du jeu
@@ -35,7 +36,12 @@
   function onState(next) {
     const prev = state.view;
     const sameRound = prev && prev.round === next.round && prev.phase === next.phase;
-    if (!sameRound) { state.selected = null; state.feedback = null; }
+    if (!sameRound) { state.selected = null; state.feedback = null; state.freshMiss = null; }
+    if (sameRound && next.phase === 'guessing' && prev) {
+      state.freshMiss = next.targetCells.findIndex((c, i) => c.state === 'miss' && prev.targetCells[i].state === 'hidden');
+      if (state.freshMiss < 0) state.freshMiss = null;
+      if (!prev.you.done && next.you.done) showFx();
+    }
     if (sameRound && next.phase === 'placing' && next.you.used > prev.you.used) {
       state.feedback = { kind: 'info', text: `Objet posé (${next.you.used}/${next.items}).` };
     }
@@ -54,6 +60,9 @@
     if (n.you.misses > p.you.misses) {
       const left = n.maxMisses - n.you.misses;
       return { kind: 'ko', text: `Raté. Il te reste ${left} erreur${left > 1 ? 's' : ''}.` };
+    }
+    if (n.opponent && p.opponent && !p.opponent.done && n.opponent.done) {
+      return { kind: 'warn', text: `${n.opponent.name} a épuisé ses erreurs.` };
     }
     if (n.opponent && p.opponent && n.opponent.found > p.opponent.found) {
       return { kind: 'warn', text: `${n.opponent.name} a trouvé un objet (${n.opponent.found}/${n.items}).` };
@@ -76,6 +85,30 @@
     }
     return n;
   }
+  // Cœur brisé : deux moitiés qui s'écartent et une fissure (les animations sont dans style.css)
+  const HEART = 'M32 56 C10 40 6 28 6 20 C6 11 13 6 20 6 C26 6 30 10 32 14 C34 10 38 6 44 6 C51 6 58 11 58 20 C58 28 54 40 32 56 Z';
+  let heartId = 0;
+  function brokenHeart(cls) {
+    const id = 'hc' + (heartId++);
+    const s = h('span', { class: 'bheart ' + cls });
+    s.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs>
+      <clipPath id="${id}l"><rect x="0" y="0" width="31.5" height="64"/></clipPath>
+      <clipPath id="${id}r"><rect x="32.5" y="0" width="31.5" height="64"/></clipPath></defs>
+      <g class="hl"><path clip-path="url(#${id}l)" d="${HEART}" fill="#d1785a"/></g>
+      <g class="hr"><path clip-path="url(#${id}r)" d="${HEART}" fill="#a8583b"/></g>
+      <path class="crack" d="M32.5 14 L28 24 L36 32 L29 42 L33.5 52" stroke="#fffdf9" stroke-width="2.6" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+    return s;
+  }
+  // Cœur brisé plein écran, quand un joueur a épuisé ses erreurs
+  function showFx() {
+    const fx = document.getElementById('fx');
+    if (!fx) return;
+    fx.replaceChildren(brokenHeart('big'), h('p', { class: 'fx-text' }, 'Plus d’erreurs'));
+    fx.classList.remove('on');
+    void fx.offsetWidth;
+    fx.classList.add('on');
+  }
+
   // Objet low-poly : SVG fixe généré par objects.js
   const objNode = id => { const s = h('span', { class: 'obj' }); s.innerHTML = window.OBJ_SVG(id); return s; };
 
@@ -130,15 +163,16 @@
 
   // ---------- grille ----------
   // Une grille de 12 cartes. onCell(i) est appelé au clic, seulement sur les cases vides.
-  function grid(cells, { small = false, onCell = null } = {}) {
+  function grid(cells, { small = false, onCell = null, fresh = null } = {}) {
     const g = h('div', { class: 'grid' + (small ? ' small' : '') });
     cells.forEach((c, i) => {
       const row = Math.floor(i / 4), col = i % 4;
       const color = (row + col) % 2 ? 'sand' : 'sage';
       const active = !!onCell && c.state === 'hidden';
-      const content = c.emoji ? objNode(c.emoji) : null;
+      const isFresh = fresh === i;
+      const content = isFresh ? brokenHeart('mini') : c.emoji ? objNode(c.emoji) : null;
       g.append(h('button', {
-        class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}`,
+        class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}${isFresh ? ' fresh' : ''}`,
         disabled: !active,
         onclick: active ? () => onCell(i) : null,
       }, content));
@@ -286,9 +320,10 @@
         ? (() => { const e = state.selected; state.selected = null; send({ type: 'place', cell: i, emoji: e }); })()
         : send({ type: 'guess', cell: i }))
       : null;
-    put('main', JSON.stringify([v.phase, interactive, state.selected, cells, v.you.validated]), () => h('div', { class: 'zone' },
+    const fresh = placing ? null : state.freshMiss;
+    put('main', JSON.stringify([v.phase, interactive, state.selected, cells, v.you.validated, fresh]), () => h('div', { class: 'zone' },
       h('p', { class: 'label' }, placing ? 'Ta cachette' : `Grille de ${opp ? opp.name : 'ton ami'}`),
-      grid(cells, { onCell })));
+      grid(cells, { onCell, fresh })));
 
     // Petite grille : ta cachette, visible pendant la devinette et à la fin
     const showSide = v.phase === 'guessing' || ended;
