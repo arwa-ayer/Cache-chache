@@ -7,8 +7,12 @@
     name: localStorage.getItem('cc-name') || '',
     selected: null,        // objet choisi pour la cachette (côté client)
     error: '',
+    feedback: null,        // message court après une action : { kind, text }
   };
   let ws = null;
+  let root = null;         // conteneur du jeu
+  const slots = {};        // zones mises à jour séparément
+  const keys = {};         // signature de chaque zone : on ne la reconstruit que si elle change
 
   // ---------- connexion temps réel ----------
   function connect() {
@@ -17,12 +21,7 @@
       const m = JSON.parse(e.data);
       if (m.type === 'joined') state.code = m.code;
       if (m.type === 'error') state.error = m.message;
-      if (m.type === 'state') {
-        const prev = state.view;
-        if (!prev || prev.phase !== m.state.phase || prev.round !== m.state.round) state.selected = null;
-        state.view = m.state;
-        state.error = '';
-      }
+      if (m.type === 'state') onState(m.state);
       render();
     };
     ws.onclose = () => {
@@ -32,7 +31,37 @@
   }
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
-  // ---------- helper DOM (évite innerHTML : les prénoms viennent des joueurs) ----------
+  // ---------- état et retours ----------
+  function onState(next) {
+    const prev = state.view;
+    const sameRound = prev && prev.round === next.round && prev.phase === next.phase;
+    if (!sameRound) { state.selected = null; state.feedback = null; }
+    if (sameRound && next.phase === 'placing' && next.you.used > prev.you.used) {
+      state.feedback = { kind: 'info', text: `Objet posé (${next.you.used}/${next.items}).` };
+    }
+    if (sameRound && next.phase === 'guessing') {
+      state.feedback = diffFeedback(prev, next) || state.feedback;
+    }
+    state.view = next;
+    state.error = '';
+  }
+
+  function diffFeedback(p, n) {
+    if (n.you.found > p.you.found) {
+      const left = n.items - n.you.found;
+      return { kind: 'ok', text: left ? `Touché ! Il te reste ${left} objet${left > 1 ? 's' : ''} à trouver.` : 'Les 3 objets sont trouvés !' };
+    }
+    if (n.you.misses > p.you.misses) {
+      const left = n.maxMisses - n.you.misses;
+      return { kind: 'ko', text: `Raté. Il te reste ${left} erreur${left > 1 ? 's' : ''}.` };
+    }
+    if (n.opponent && p.opponent && n.opponent.found > p.opponent.found) {
+      return { kind: 'warn', text: `${n.opponent.name} a trouvé un objet (${n.opponent.found}/${n.items}).` };
+    }
+    return null;
+  }
+
+  // ---------- helper DOM (les prénoms viennent des joueurs : on n'utilise jamais innerHTML pour du texte) ----------
   function h(tag, attrs = {}, ...kids) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -47,6 +76,8 @@
     }
     return n;
   }
+  // Objet low-poly : SVG fixe généré par objects.js
+  const objNode = id => { const s = h('span', { class: 'obj' }); s.innerHTML = window.OBJ_SVG(id); return s; };
 
   function readName() {
     const input = document.getElementById('name');
@@ -56,9 +87,6 @@
     localStorage.setItem('cc-name', n);
     return n;
   }
-
-  // Objet low-poly (SVG généré par objects.js, aucun texte saisi par un joueur ici)
-  const objNode = id => { const s = h('span', { class: 'obj' }); s.innerHTML = window.OBJ_SVG(id); return s; };
 
   const errorBox = () => (state.error ? h('p', { class: 'error' }, state.error) : null);
 
@@ -100,21 +128,14 @@
     );
   }
 
-  // ---------- écran de jeu ----------
-  function scoreboard(v) {
-    return h('header', { class: 'score' },
-      h('div', { class: 'who on' }, h('b', {}, v.you.name), h('span', {}, v.you.score)),
-      h('div', { class: 'round' }, `Manche ${v.round}/${v.totalRounds}`),
-      h('div', { class: 'who' }, h('b', {}, v.opponent ? v.opponent.name : '…'), h('span', {}, v.opponent ? v.opponent.score : 0)));
-  }
-
-  // Une grille de 12 cartes. onCell(i) est appelé au clic si la case est active.
-  function grid(cells, { small = false, onCell = null, isClickable = () => false } = {}) {
+  // ---------- grille ----------
+  // Une grille de 12 cartes. onCell(i) est appelé au clic, seulement sur les cases vides.
+  function grid(cells, { small = false, onCell = null } = {}) {
     const g = h('div', { class: 'grid' + (small ? ' small' : '') });
     cells.forEach((c, i) => {
       const row = Math.floor(i / 4), col = i % 4;
       const color = (row + col) % 2 ? 'sand' : 'sage';
-      const active = onCell && isClickable(c, i);
+      const active = !!onCell && c.state === 'hidden';
       const content = c.emoji ? objNode(c.emoji) : null;
       g.append(h('button', {
         class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}`,
@@ -125,42 +146,78 @@
     return g;
   }
 
-  const info = (text, live = false) => h('section', { class: 'panel' },
-    h('p', { class: 'lead' }, text),
-    live ? h('span', { class: 'live' }, '● en direct') : null);
+  // ---------- consignes et compteurs : ce qu'il faut faire, et où on en est ----------
+  function dots(n, total, bad = false) {
+    const wrap = h('span', { class: 'dots' + (bad ? ' bad' : '') });
+    for (let i = 0; i < total; i++) wrap.append(h('i', { class: i < n ? 'on' : '' }));
+    return wrap;
+  }
+  const pill = (label, node) => h('div', { class: 'pill' }, h('span', { class: 'pl' }, label), node);
 
-  function placingPanel(v) {
-    const me = v.you;
-    if (me.validated) {
-      return info(v.opponent && v.opponent.validated
-        ? 'Les deux cachettes sont prêtes…'
-        : 'Ta cachette est prête. Ton ami finit de placer ses objets…', true);
+  function guideBlock(v) {
+    const opp = v.opponent;
+    const oppName = opp ? opp.name : 'ton ami';
+    let title, text, rows = [];
+
+    if (v.phase === 'placing') {
+      if (v.you.validated) {
+        title = 'Cachette validée';
+        text = opp && opp.validated ? 'Les deux cachettes sont prêtes…' : `En attente de ${oppName}, qui place encore ses objets.`;
+      } else if (v.you.used < v.items && !state.selected) {
+        title = `Étape 1 · Choisis un objet`;
+        text = 'Touche un objet mignon dans la liste en bas.';
+      } else if (v.you.used < v.items) {
+        title = `Étape 2 · Pose ton objet`;
+        text = 'Touche une case vide de TA grille (celle du haut).';
+      } else {
+        title = 'Étape 3 · Valide';
+        text = 'Tes 3 objets sont posés. Touche Valider quand tu es prête.';
+      }
+      rows = [pill('Objets posés', dots(v.you.used, v.items))];
+    } else if (v.phase === 'guessing') {
+      if (v.you.done) {
+        title = 'Plus d’erreurs';
+        text = `Tu as épuisé tes ${v.maxMisses} erreurs. On attend la fin de la manche.`;
+      } else {
+        title = `Trouve les ${v.items} objets de ${oppName}`;
+        text = 'Touche une case de SA grille. Objet trouvé = case verte. Case vide = erreur.';
+      }
+      rows = [
+        pill('Tes objets trouvés', dots(v.you.found, v.items)),
+        pill('Tes erreurs', dots(v.you.misses, v.maxMisses, true)),
+        pill(`${oppName} : trouvés`, dots(opp ? opp.found : 0, v.items)),
+        pill(`${oppName} : erreurs`, dots(opp ? opp.misses : 0, v.maxMisses, true)),
+      ];
+    } else {
+      title = 'Fin de manche';
+      text = 'Les deux cachettes sont révélées.';
     }
-    const remaining = v.items - me.used;
-    const opts = h('div', { class: 'opts' }, v.options.map(e =>
+
+    const fb = state.feedback && (v.phase === 'guessing' || v.phase === 'placing')
+      ? h('div', { class: 'fb ' + state.feedback.kind }, state.feedback.text)
+      : null;
+    return h('div', { class: 'guide' },
+      h('p', { class: 'step' }, title),
+      h('p', { class: 'hint' }, text),
+      fb,
+      rows.length ? h('div', { class: 'pills' }, rows) : null);
+  }
+
+  // ---------- panneau d'action ----------
+  function placingPanel(v) {
+    if (v.you.validated) return null;
+    const remaining = v.items - v.you.used;
+    const opts = v.options.length ? h('div', { class: 'opts' }, v.options.map(e =>
       h('button', {
         class: 'opt' + (state.selected === e ? ' sel' : ''),
         onclick: () => { state.selected = state.selected === e ? null : e; render(); },
-      }, objNode(e))));
+      }, objNode(e)))) : null;
     return h('section', { class: 'panel' },
-      h('p', { class: 'lead' }, remaining === 0
-        ? 'Tes 3 objets sont posés. Vérifie puis valide.'
-        : state.selected
-          ? 'Touche une case vide de TA grille pour poser ton objet.'
-          : `Choisis un objet mignon (${remaining} à placer)`),
+      h('p', { class: 'lead' }, remaining === 0 ? 'Tes 3 objets sont posés.' : state.selected ? `Objet choisi : touche une case vide de ta grille.` : `Choisis un objet (${remaining} à poser)`),
       opts,
       h('div', { class: 'row' },
         h('button', { class: 'btn ghost', onclick: () => { state.selected = null; send({ type: 'reset' }); } }, 'Recommencer'),
-        h('button', { class: 'btn primary', disabled: me.used < v.items, onclick: () => send({ type: 'validate' }) }, 'Valider')));
-  }
-
-  function guessingPanel(v) {
-    const me = v.you, opp = v.opponent;
-    if (me.done) {
-      return info(`Tu as épuisé tes ${v.maxMisses} erreurs. On attend la fin de la manche…`, true);
-    }
-    return info(`Trouve les ${v.items} objets de ${opp ? opp.name : 'ton ami'}. Erreurs ${me.misses}/${v.maxMisses} · trouvés ${me.found}/${v.items}`
-      + (opp ? ` · ${opp.name} : ${opp.found}/${v.items}` : ''), true);
+        h('button', { class: 'btn primary', disabled: v.you.used < v.items, onclick: () => send({ type: 'validate' }) }, 'Valider')));
   }
 
   function resultPanel(v, over) {
@@ -169,7 +226,7 @@
     if (!r.winner) title = 'Manche nulle';
     else if (r.winner === v.you.name) title = 'Tu gagnes la manche !';
     else title = `${r.winner} gagne la manche`;
-    const why = r.reason === 'found' ? 'Les 3 objets ont été trouvés.'
+    const why = r.reason === 'found' ? 'Les 3 objets ont été trouvés en premier.'
       : r.reason === 'draw' ? 'Les deux joueurs ont épuisé leurs erreurs.' : '';
     const next = over
       ? h('button', { class: 'btn primary wide', onclick: () => send({ type: 'restart' }) }, 'Rejouer')
@@ -181,44 +238,81 @@
       next);
   }
 
-  function game(v) {
-    const ended = v.phase === 'roundEnd' || v.phase === 'over';
-    const children = [scoreboard(v)];
-
-    if (v.phase === 'placing') {
-      children.push(h('p', { class: 'label' }, 'Ta cachette'));
-      children.push(grid(v.myCells, {
-        onCell: i => { const e = state.selected; state.selected = null; send({ type: 'place', cell: i, emoji: e }); },
-        isClickable: (c) => !v.you.validated && state.selected && c.state === 'hidden',
-      }));
-      children.push(placingPanel(v));
-    } else if (v.phase === 'guessing') {
-      children.push(h('p', { class: 'label' }, `Grille de ${v.opponent ? v.opponent.name : 'ton ami'}`));
-      children.push(grid(v.targetCells, {
-        onCell: i => send({ type: 'guess', cell: i }),
-        isClickable: (c) => !v.you.done && c.state === 'hidden',
-      }));
-      children.push(h('p', { class: 'label small-label' }, 'Ta cachette'));
-      children.push(grid(v.myCells, { small: true }));
-      children.push(guessingPanel(v));
-    } else if (ended) {
-      children.push(h('p', { class: 'label' }, `Grille de ${v.opponent ? v.opponent.name : 'ton ami'}`));
-      children.push(grid(v.targetCells, { }));
-      children.push(h('p', { class: 'label small-label' }, 'Ta cachette'));
-      children.push(grid(v.myCells, { small: true }));
-      children.push(resultPanel(v, v.phase === 'over'));
+  // ---------- écran de jeu : chaque zone n'est reconstruite que si elle change ----------
+  function buildRoot() {
+    root = h('div', { class: 'game' });
+    for (const name of ['score', 'guide', 'main', 'side', 'panel', 'foot']) {
+      slots[name] = h('div', { class: 'slot-' + name });
+      root.append(slots[name]);
+      keys[name] = null;
     }
+    slots.foot.replaceChildren(h('button', { class: 'quit', onclick: () => location.reload() }, 'Quitter'));
+  }
 
-    children.push(errorBox());
-    children.push(h('button', { class: 'quit', onclick: () => location.reload() }, 'Quitter'));
-    return h('div', { class: 'game' }, ...children);
+  function put(name, key, build) {
+    if (keys[name] === key) return;
+    keys[name] = key;
+    const el = build();
+    el.classList.add('slot-' + name);
+    slots[name].replaceWith(el);
+    slots[name] = el;
+  }
+
+  function scoreboard(v) {
+    return h('header', { class: 'score' },
+      h('div', { class: 'who on' }, h('b', {}, v.you.name), h('span', {}, v.you.score)),
+      h('div', { class: 'round' }, `Manche ${v.round}/${v.totalRounds}`),
+      h('div', { class: 'who' }, h('b', {}, v.opponent ? v.opponent.name : '…'), h('span', {}, v.opponent ? v.opponent.score : 0)));
+  }
+
+  function updateGame(v) {
+    const ended = v.phase === 'roundEnd' || v.phase === 'over';
+    const opp = v.opponent;
+
+    put('score', JSON.stringify([v.you.name, v.you.score, opp && opp.name, opp && opp.score, v.round]),
+      () => scoreboard(v));
+
+    put('guide', JSON.stringify([v.phase, v.you.used, v.you.validated, v.you.found, v.you.misses, v.you.done,
+      opp && [opp.found, opp.misses, opp.validated], state.feedback && state.feedback.text, state.selected]),
+      () => guideBlock(v));
+
+    // Grille principale : ta cachette pendant le placement, la grille de l'ami pendant la devinette
+    const placing = v.phase === 'placing';
+    const cells = placing ? v.myCells : v.targetCells;
+    const interactive = placing ? (!v.you.validated && !!state.selected)
+      : v.phase === 'guessing' ? !v.you.done : false;
+    const onCell = interactive
+      ? (i => placing
+        ? (() => { const e = state.selected; state.selected = null; send({ type: 'place', cell: i, emoji: e }); })()
+        : send({ type: 'guess', cell: i }))
+      : null;
+    put('main', JSON.stringify([v.phase, interactive, state.selected, cells, v.you.validated]), () => h('div', { class: 'zone' },
+      h('p', { class: 'label' }, placing ? 'Ta cachette' : `Grille de ${opp ? opp.name : 'ton ami'}`),
+      grid(cells, { onCell })));
+
+    // Petite grille : ta cachette, visible pendant la devinette et à la fin
+    const showSide = v.phase === 'guessing' || ended;
+    put('side', JSON.stringify([showSide, showSide && v.myCells]), () => showSide
+      ? h('div', { class: 'zone' }, h('p', { class: 'label small-label' }, 'Ta cachette'), grid(v.myCells, { small: true }))
+      : h('div', {}));
+
+    let panel = null;
+    if (v.phase === 'placing') panel = placingPanel(v);
+    else if (ended) panel = resultPanel(v, v.phase === 'over');
+    put('panel', JSON.stringify([v.phase, v.round, v.you.used, v.you.validated, state.selected, v.options,
+      v.result && v.result.winner, v.result && v.result.reason, v.score]), () => panel || h('div', {}));
+
+    put('foot', JSON.stringify([state.error]), () => h('div', { class: 'foot' }, errorBox()));
   }
 
   function render() {
-    app.replaceChildren();
-    if (!state.view) { app.append(lobby()); return; }
-    const v = state.view;
-    app.append(v.phase === 'waiting' ? waiting() : game(v));
+    if (!state.view) { root = null; app.replaceChildren(lobby()); return; }
+    if (state.view.phase === 'waiting') { root = null; app.replaceChildren(waiting()); return; }
+    if (!root || !app.contains(root)) {
+      buildRoot();
+      app.replaceChildren(root);
+    }
+    updateGame(state.view);
   }
 
   connect();
