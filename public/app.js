@@ -137,9 +137,11 @@
         onclick: () => { state.selected = state.selected === e ? null : e; render(); },
       }, e)));
     return h('section', { class: 'panel' },
-      h('p', { class: 'lead' }, state.selected
-        ? 'Touche une case vide de TA grille pour poser ton objet.'
-        : `Choisis un objet mignon (${remaining} à placer)`),
+      h('p', { class: 'lead' }, remaining === 0
+        ? 'Tes 3 objets sont posés. Vérifie puis valide.'
+        : state.selected
+          ? 'Touche une case vide de TA grille pour poser ton objet.'
+          : `Choisis un objet mignon (${remaining} à placer)`),
       opts,
       h('div', { class: 'row' },
         h('button', { class: 'btn ghost', onclick: () => { state.selected = null; send({ type: 'reset' }); } }, 'Recommencer'),
