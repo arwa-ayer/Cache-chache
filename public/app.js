@@ -38,7 +38,7 @@
     const sameRound = prev && prev.round === next.round && prev.phase === next.phase;
     if (!sameRound) { state.selected = null; state.feedback = null; state.freshMiss = null; }
     if (sameRound && next.phase === 'guessing' && prev) {
-      state.freshMiss = next.targetCells.findIndex((c, i) => c.state === 'miss' && prev.targetCells[i].state === 'hidden');
+      state.freshMiss = next.targetCells.findIndex((c, i) => c.state === 'my_miss' && prev.targetCells[i].state === 'hidden');
       if (state.freshMiss < 0) state.freshMiss = null;
       if (!prev.you.done && next.you.done) showFx();
     }
@@ -62,7 +62,7 @@
       return { kind: 'ko', text: `Raté. Il te reste ${left} erreur${left > 1 ? 's' : ''}.` };
     }
     if (n.opponent && p.opponent && !p.opponent.done && n.opponent.done) {
-      return { kind: 'warn', text: `${n.opponent.name} a épuisé ses erreurs.` };
+      return { kind: 'warn', text: `${n.opponent.name} a épuisé ses erreurs : tu joues seul jusqu’à ses 3 objets ou tes erreurs.` };
     }
     if (n.opponent && p.opponent && n.opponent.found > p.opponent.found) {
       return { kind: 'warn', text: `${n.opponent.name} a trouvé un objet (${n.opponent.found}/${n.items}).` };
@@ -161,83 +161,90 @@
     );
   }
 
-  // ---------- grille ----------
-  // Une grille de 12 cartes. onCell(i) est appelé au clic, seulement sur les cases vides.
+  // ---------- grille : chaque état a une couleur ET une icône ----------
+  const CELL_STATES = {
+    hidden:       { label: 'Caché, pas encore joué', badge: '' },
+    mine:         { label: 'Ton objet, pas encore trouvé', badge: '' },
+    found_by_opp: { label: 'Objet trouvé par l’ordi', badge: '●', cls: 'b-opp' },
+    opp_miss:     { label: 'Case vide jouée par l’ordi', badge: '−', cls: 'b-oppmiss' },
+    found_by_me:  { label: 'Objet trouvé par toi', badge: '✓', cls: 'b-me' },
+    my_miss:      { label: 'Case vide jouée par toi', badge: '✕', cls: 'b-mymiss' },
+    empty:        { label: 'Case vide, révélée à la fin', badge: '○', cls: 'b-empty' },
+    item:         { label: 'Objet non trouvé', badge: '' },
+  };
+
+  // Une grille de 12 cartes. onCell(i) est appelé au clic, seulement sur les cases cachées.
   function grid(cells, { small = false, onCell = null, fresh = null } = {}) {
     const g = h('div', { class: 'grid' + (small ? ' small' : '') });
     cells.forEach((c, i) => {
       const row = Math.floor(i / 4), col = i % 4;
-      const color = (row + col) % 2 ? 'sand' : 'sage';
+      const tone = (row + col) % 2 ? 'sand' : 'sage';
       const active = !!onCell && c.state === 'hidden';
       const isFresh = fresh === i;
-      const content = isFresh ? brokenHeart('mini') : c.emoji ? objNode(c.emoji) : null;
+      const meta = CELL_STATES[c.state] || CELL_STATES.hidden;
+      const content = [
+        isFresh ? brokenHeart('mini') : c.emoji ? objNode(c.emoji) : null,
+        meta.badge ? h('span', { class: 'badge ' + (meta.cls || ''), 'aria-hidden': 'true' }, meta.badge) : null,
+      ];
       g.append(h('button', {
-        class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}${isFresh ? ' fresh' : ''}`,
+        class: `cell ${tone} st-${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}${isFresh ? ' fresh' : ''}`,
         disabled: !active,
+        'aria-label': meta.label,
         onclick: active ? () => onCell(i) : null,
       }, content));
     });
     return g;
   }
 
-  // ---------- consignes et compteurs : ce qu'il faut faire, et où on en est ----------
-  function dots(n, total, bad = false) {
-    const wrap = h('span', { class: 'dots' + (bad ? ' bad' : '') });
-    for (let i = 0; i < total; i++) wrap.append(h('i', { class: i < n ? 'on' : '' }));
+  // ---------- compteurs : cercle = trouvé (✓), carré = erreur (✕), la forme aide autant que la couleur ----------
+  function tally(n, total, kind, small = false) {
+    const wrap = h('span', { class: 'tl ' + kind + (small ? ' sm' : '') });
+    for (let i = 0; i < total; i++) {
+      const on = i < n;
+      const mark = on ? (kind === 'found' ? '✓' : '✕') : '';
+      wrap.append(h('i', { class: on ? 'on' : '' }, mark));
+    }
     return wrap;
   }
-  const pill = (label, node) => h('div', { class: 'pill' }, h('span', { class: 'pl' }, label), node);
+  function tallyRow(name, found, misses, v, small = false) {
+    return h('div', { class: 'trow' + (small ? ' sm' : '') },
+      h('span', { class: 'tname' }, name),
+      tally(found, v.items, 'found', small),
+      tally(misses, v.maxMisses, 'err', small));
+  }
 
-  function guideBlock(v) {
+  // ---------- bandeau : une ligne d'état + une ligne de retour ----------
+  function statusBlock(v) {
     const opp = v.opponent;
     const oppName = opp ? opp.name : 'ton ami';
-    let title, text, rows = [];
-
+    let title, text;
     if (v.phase === 'placing') {
-      if (v.you.validated) {
-        title = 'Cachette validée';
-        text = opp && opp.validated ? 'Les deux cachettes sont prêtes…' : `En attente de ${oppName}, qui place encore ses objets.`;
-      } else if (v.you.used < v.items && !state.selected) {
-        title = `Étape 1 · Choisis un objet`;
-        text = 'Touche un objet mignon dans la liste en bas.';
-      } else if (v.you.used < v.items) {
-        title = `Étape 2 · Pose ton objet`;
-        text = 'Touche une case vide de TA grille (celle du haut).';
-      } else {
-        title = 'Étape 3 · Valide';
-        text = 'Tes 3 objets sont posés. Touche Valider quand tu es prête.';
-      }
-      rows = [pill('Objets posés', dots(v.you.used, v.items))];
+      if (v.you.validated) { title = 'Cachette validée'; text = opp && opp.validated ? 'Les deux sont prêts' : `${oppName} place encore ses objets`; }
+      else if (v.you.used < v.items && !state.selected) { title = 'Étape 1', text = 'choisis un objet'; }
+      else if (v.you.used < v.items) { title = 'Étape 2', text = 'touche une case vide de ta grille'; }
+      else { title = 'Étape 3', text = 'vérifie puis valide'; }
     } else if (v.phase === 'guessing') {
       if (v.you.done) {
-        title = 'Plus d’erreurs';
-        text = `Tu as épuisé tes ${v.maxMisses} erreurs. On attend la fin de la manche.`;
+        title = 'Tes erreurs sont épuisées';
+        text = opp && !opp.done ? `${oppName} continue à chercher` : '';
       } else if (v.you.turn) {
-        title = 'C’est ton tour !';
-        text = `Touche une case de LA grille de ${oppName}. Objet = case verte, case vide = erreur.`;
+        title = 'À toi de jouer';
+        text = `trouve les objets de ${oppName}`;
       } else {
         title = `Tour de ${oppName}`;
-        text = `Attends, ${oppName} joue. Ce sera ton tour juste après.`;
+        text = 'attends ton tour';
       }
-      rows = [
-        pill('Tes objets trouvés', dots(v.you.found, v.items)),
-        pill('Tes erreurs', dots(v.you.misses, v.maxMisses, true)),
-        pill(`${oppName} : trouvés`, dots(opp ? opp.found : 0, v.items)),
-        pill(`${oppName} : erreurs`, dots(opp ? opp.misses : 0, v.maxMisses, true)),
-      ];
     } else {
       title = 'Fin de manche';
-      text = 'Les deux cachettes sont révélées.';
+      text = 'les cachettes sont révélées';
     }
+    return h('div', { class: 'status', role: 'status', 'aria-live': 'polite' },
+      h('b', {}, title), text ? h('span', { class: 'hint' }, ' · ' + text) : null);
+  }
 
-    const fb = state.feedback && (v.phase === 'guessing' || v.phase === 'placing')
-      ? h('div', { class: 'fb ' + state.feedback.kind }, state.feedback.text)
-      : null;
-    return h('div', { class: 'guide', role: 'status', 'aria-live': 'polite' },
-      h('p', { class: 'step' }, title),
-      h('p', { class: 'hint' }, text),
-      fb,
-      rows.length ? h('div', { class: 'pills' }, rows) : null);
+  function feedbackLine(v) {
+    if (!state.feedback || (v.phase !== 'guessing' && v.phase !== 'placing')) return h('div', { class: 'fb-empty' });
+    return h('div', { class: 'fb ' + state.feedback.kind }, state.feedback.text);
   }
 
   // ---------- panneau d'action ----------
@@ -278,7 +285,7 @@
   // ---------- écran de jeu : chaque zone n'est reconstruite que si elle change ----------
   function buildRoot() {
     root = h('div', { class: 'game' });
-    for (const name of ['score', 'guide', 'main', 'side', 'panel', 'foot']) {
+    for (const name of ['score', 'guide', 'main', 'tally', 'side', 'panel', 'foot']) {
       slots[name] = h('div', { class: 'slot-' + name });
       root.append(slots[name]);
       keys[name] = null;
@@ -295,6 +302,8 @@
     slots[name].replaceWith(el);
     slots[name] = el;
   }
+
+  const oppName = opp => (opp ? opp.name : 'ton ami');
 
   function scoreboard(v) {
     const turnOn = v.phase === 'guessing';
@@ -313,8 +322,14 @@
       () => scoreboard(v));
 
     put('guide', JSON.stringify([v.phase, v.you.turn, v.you.used, v.you.validated, v.you.found, v.you.misses, v.you.done,
-      opp && [opp.found, opp.misses, opp.validated], state.feedback && state.feedback.text, state.selected]),
-      () => guideBlock(v));
+      opp && [opp.found, opp.misses, opp.validated, opp.done], state.feedback && state.feedback.text, state.selected]),
+      () => h('div', { class: 'guidebox' }, statusBlock(v), feedbackLine(v)));
+
+    put('tally', JSON.stringify([v.phase, v.you.found, v.you.misses, opp && opp.found, opp && opp.misses]), () => (v.phase === 'placing'
+      ? h('div', { class: 'tally-none' })
+      : h('div', { class: 'tallies' },
+        tallyRow('Toi', v.you.found, v.you.misses, v),
+        opp ? tallyRow(oppName(opp), opp.found, opp.misses, v, true) : null)));
 
     // Grille principale : ta cachette pendant le placement, la grille de l'ami pendant la devinette
     const placing = v.phase === 'placing';
@@ -328,7 +343,7 @@
       : null;
     const fresh = placing ? null : state.freshMiss;
     put('main', JSON.stringify([v.phase, interactive, v.you.turn, state.selected, cells, v.you.validated, fresh]), () => h('div', { class: 'zone' },
-      h('p', { class: 'label' }, placing ? 'Ta cachette' : `Grille de ${opp ? opp.name : 'ton ami'}`),
+      h('p', { class: 'label' }, placing ? 'Ta cachette' : `La grille de ${oppName(opp)}`),
       grid(cells, { onCell, fresh })));
 
     // Petite grille : ta cachette, visible pendant la devinette et à la fin

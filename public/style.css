@@ -212,3 +212,69 @@ main { padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(40p
 .rlayer[hidden] { display: none; }
 .rlayer-box { width: min(92vw, 420px); max-height: calc(100dvh - 32px); overflow: auto; }
 .rlayer .panel { box-shadow: 0 10px 0 var(--edge), 0 22px 40px rgba(60, 50, 35, .18); }
+
+/* ===== Révision mobile : états de case, compteurs, bandeau compact, joueur actif ===== */
+.game { gap: 10px; }
+.label { font-size: 14px; font-weight: 800; text-transform: none; letter-spacing: .01em; color: var(--ink); opacity: .8; text-align: left; width: 100%; }
+.small-label { margin-top: 0; }
+
+/* Bandeau : une ligne d'état + une ligne de retour */
+.guidebox {
+  width: 100%; background: var(--paper); border-radius: 18px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 2px; box-shadow: 0 5px 0 var(--edge);
+}
+.status { font-size: 16px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.status .hint { font-weight: 700; color: var(--mute); }
+.fb { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; padding: 2px 0; }
+.fb.ok { color: var(--teal-d); }
+.fb.ko { color: var(--terra-d); }
+.fb.warn { color: #6b5a3a; }
+.fb.info { color: var(--ink); }
+.fb-empty { height: 4px; }
+
+/* Compteurs : cercle = trouvé (✓), carré = erreur (✕) */
+.tallies {
+  width: 100%; background: var(--paper); border-radius: 18px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px; box-shadow: 0 5px 0 var(--edge);
+}
+.trow { display: flex; align-items: center; gap: 8px; }
+.tname { width: 48px; font-size: 14px; font-weight: 800; color: var(--ink); text-align: left; }
+.tl { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.tl i {
+  width: 22px; height: 22px; border: 2px solid var(--mute); border-radius: 50%; background: #fff;
+  display: inline-grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 900; color: #fff;
+}
+.tl.err i { border-radius: 6px; }
+.tl.found i.on { background: var(--teal); border-color: var(--teal-d); }
+.tl.err i.on { background: var(--terra); border-color: var(--terra-d); }
+.tl.sm i { width: 18px; height: 18px; font-size: 14px; }
+
+/* Six états de case : couleur + icône + forme (mention dans aria-label) */
+.grid { padding: 10px; gap: 8px; }
+.cell { position: relative; }
+.cell.st-mine { background: var(--paper); box-shadow: 0 6px 0 var(--edge), inset 0 0 0 3px var(--sky); }
+.cell.st-found_by_me { background: var(--teal); box-shadow: 0 6px 0 var(--teal-d); color: #fff; animation: pop .4s cubic-bezier(.3, 1.6, .5, 1); }
+.cell.st-found_by_opp { background: #f6d9cc; box-shadow: 0 6px 0 #e2b8a4; }
+.cell.st-my_miss { background: #e4e0d8; box-shadow: 0 4px 0 #cbc5b9; }
+.cell.st-opp_miss { background: #f1e7d2; box-shadow: 0 4px 0 #d9c9a6; border: 2px dashed var(--sand-d); }
+.cell.st-empty { background: #f7f2e8; box-shadow: 0 4px 0 #e6dccb; }
+.cell.st-item { background: var(--paper); box-shadow: 0 4px 0 #d9c6a6; border: 2px dashed var(--teal); }
+.cell.st-hidden.sage { background: var(--sage); }
+.cell.st-hidden.sand { background: var(--sand); }
+.badge {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--paper); border: 2px solid var(--ink); color: var(--ink);
+  display: grid; place-items: center; font-size: 14px; font-weight: 900; line-height: 1;
+}
+.badge.b-me { background: var(--teal-d); color: #fff; border-color: var(--teal-d); }
+.badge.b-opp { background: var(--terra-d); color: #fff; border-color: var(--terra-d); }
+.badge.b-mymiss { background: #5b6b65; color: #fff; border-color: #5b6b65; }
+.badge.b-oppmiss { background: var(--sand-d); color: var(--ink); border-color: var(--ink); }
+.badge.b-empty { background: transparent; border-style: dashed; }
+
+/* Joueur actif : bordure, élévation et couleur */
+.who.on { border: 3px solid var(--teal-d); transform: translateY(-3px); box-shadow: 0 8px 0 var(--teal-d); background: #d5ebe6; }
+.who { padding: 8px 12px; }
+.fb, .fb.ok, .fb.ko, .fb.warn, .fb.info { background: none; padding: 2px 0; border-radius: 0; }
+.tname { white-space: nowrap; min-width: 62px; width: auto; }
+.tally-none { display: none; }

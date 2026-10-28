@@ -126,24 +126,29 @@ function endRound(room, winner, reason) {
 }
 
 // Cellules de la grille d'un joueur (sa cachette)
-function ownCells(room, me) {
+// États d'une case de MA grille : caché, mon objet, trouvé par l'ordi, erreur de l'ordi, vide révélé, objet non trouvé
+function ownCells(room, me, opp) {
   const ended = room.phase === 'roundEnd' || room.phase === 'over';
   return Array.from({ length: GRID }, (_, i) => {
     const emoji = me.board[i];
+    const rev = opp.guesses[i];
+    if (emoji && rev === 'hit') return { emoji, state: 'found_by_opp' };
+    if (rev === 'miss') return { emoji: null, state: 'opp_miss' };
     if (ended) return { emoji, state: emoji ? 'item' : 'empty' };
     return { emoji, state: emoji ? 'mine' : 'hidden' };
   });
 }
 
 // Cellules de la grille de l'adversaire, vues depuis moi (mes devinettes)
+// États d'une case de LA grille de l'adversaire : caché, trouvé par moi, mon erreur, vide révélé, objet non trouvé
 function targetCells(room, me, opp) {
   const ended = room.phase === 'roundEnd' || room.phase === 'over';
   return Array.from({ length: GRID }, (_, i) => {
     const rev = me.guesses[i];
     const emoji = opp.board[i];
-    if (ended) return { emoji, state: emoji ? (rev === 'hit' ? 'hit' : 'item') : (rev === 'miss' ? 'miss' : 'empty') };
-    if (rev === 'hit') return { emoji, state: 'hit' };
-    if (rev === 'miss') return { emoji: null, state: 'miss' };
+    if (rev === 'hit') return { emoji, state: 'found_by_me' };
+    if (rev === 'miss') return { emoji: null, state: 'my_miss' };
+    if (ended) return { emoji, state: emoji ? 'item' : 'empty' };
     return { emoji: null, state: 'hidden' };
   });
 }
@@ -169,7 +174,7 @@ function viewFor(room, me) {
       turn: room.phase === 'guessing' && room.players[room.turn] === opp,
     } : null,
     options: ready && room.phase === 'placing' && !me.validated ? me.options : [],
-    myCells: ready ? ownCells(room, me) : null,
+    myCells: ready ? ownCells(room, me, opp) : null,
     targetCells: ready && opp && room.phase !== 'placing' ? targetCells(room, me, opp) : null,
     result: room.result,
   };
