@@ -290,6 +290,7 @@
     if (keys[name] === key) return;
     keys[name] = key;
     const el = build();
+    if (name === 'layer') { slots.layer = el; return; }
     el.classList.add('slot-' + name);
     slots[name].replaceWith(el);
     slots[name] = el;
@@ -338,9 +339,21 @@
 
     let panel = null;
     if (v.phase === 'placing') panel = placingPanel(v);
-    else if (ended) panel = resultPanel(v, v.phase === 'over');
-    put('panel', JSON.stringify([v.phase, v.round, v.you.used, v.you.validated, state.selected, v.options,
-      v.result && v.result.winner, v.result && v.result.reason, v.score]), () => panel || h('div', {}));
+    put('panel', JSON.stringify([v.phase, v.round, v.you.used, v.you.validated, state.selected, v.options]),
+      () => panel || h('div', {}));
+
+    // Fin de manche : fenêtre centrée au-dessus du jeu, sans scroll
+    const layer = document.getElementById('result-layer');
+    if (ended && layer) {
+      put('layer', JSON.stringify([v.phase, v.round, v.result && v.result.winner, v.result && v.result.reason, v.you.score, v.opponent && v.opponent.score]),
+        () => h('div', { class: 'rlayer-box' }, resultPanel(v, v.phase === 'over')));
+      layer.replaceChildren(slots.layer);
+      layer.hidden = false;
+    } else if (layer) {
+      layer.hidden = true;
+      layer.replaceChildren();
+      keys.layer = null;
+    }
 
     put('foot', JSON.stringify([state.error]), () => h('div', { class: 'foot' }, errorBox()));
   }

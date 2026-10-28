@@ -206,3 +206,9 @@ main { padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(40p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Fin de manche : fenêtre centrée, visible sans scroll */
+.rlayer { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(243, 237, 227, .72); backdrop-filter: blur(3px); }
+.rlayer[hidden] { display: none; }
+.rlayer-box { width: min(92vw, 420px); max-height: calc(100dvh - 32px); overflow: auto; }
+.rlayer .panel { box-shadow: 0 10px 0 var(--edge), 0 22px 40px rgba(60, 50, 35, .18); }
