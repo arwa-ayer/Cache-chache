@@ -11,9 +11,8 @@ const ITEMS = 3;        // objets cachés par joueur et par manche
 const MAX_MISSES = 6;   // erreurs autorisées pendant la devinette
 const ROUNDS = 4;       // manches au total
 const OPTIONS = 8;      // objets mignons proposés à chaque choix
-const CUTE = ['🐱', '🐶', '🐰', '🦊', '🐻', '🐼', '🐸', '🐥', '🦋', '🐞', '🐙', '🍓',
-  '🍒', '🍉', '🍭', '🍩', '🧁', '🍄', '🌸', '🌻', '🌈', '⭐', '🎀', '🧸', '🎈', '💎',
-  '🍑', '🦄', '🍬', '🌙'];
+const CUTE = ['cherry', 'star', 'heart', 'moon', 'mushroom', 'cactus', 'diamond', 'drop',
+  'leaf', 'planet', 'house', 'flower', 'bear', 'cat', 'egg', 'cloud'];
 
 const PUBLIC = path.join(__dirname, 'public');
 const MIME = {

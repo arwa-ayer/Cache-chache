@@ -57,6 +57,9 @@
     return n;
   }
 
+  // Objet low-poly (SVG généré par objects.js, aucun texte saisi par un joueur ici)
+  const objNode = id => { const s = h('span', { class: 'obj' }); s.innerHTML = window.OBJ_SVG(id); return s; };
+
   const errorBox = () => (state.error ? h('p', { class: 'error' }, state.error) : null);
 
   // ---------- écrans d'entrée ----------
@@ -112,11 +115,12 @@
       const row = Math.floor(i / 4), col = i % 4;
       const color = (row + col) % 2 ? 'sand' : 'sage';
       const active = onCell && isClickable(c, i);
+      const content = c.emoji ? objNode(c.emoji) : null;
       g.append(h('button', {
         class: `cell ${color} ${c.state}${c.emoji ? ' has' : ''}${active ? ' clickable' : ''}`,
         disabled: !active,
         onclick: active ? () => onCell(i) : null,
-      }, c.emoji || ''));
+      }, content));
     });
     return g;
   }
@@ -137,7 +141,7 @@
       h('button', {
         class: 'opt' + (state.selected === e ? ' sel' : ''),
         onclick: () => { state.selected = state.selected === e ? null : e; render(); },
-      }, e)));
+      }, objNode(e))));
     return h('section', { class: 'panel' },
       h('p', { class: 'lead' }, remaining === 0
         ? 'Tes 3 objets sont posés. Vérifie puis valide.'

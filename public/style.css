@@ -142,3 +142,14 @@ input:focus { background: #fff; box-shadow: inset 0 0 0 3px var(--sky), inset 0 
   font: inherit; font-size: 13px; font-weight: 800; background: none; border: 0; color: var(--mute);
   text-decoration: underline; cursor: pointer; padding: 6px;
 }
+
+/* Objets low-poly */
+.obj { display: block; width: 84%; height: 84%; }
+.obj svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.opt .obj { width: 44px; height: 44px; }
+
+/* Tuiles : dégradé léger et reflet en haut, pour un rendu plus 3D */
+.cell.sage { background: linear-gradient(165deg, #cfdfc8 0%, var(--sage) 55%, #a6bb9c 100%); box-shadow: 0 6px 0 var(--sage-d), inset 0 2px 0 rgba(255,255,255,.45); }
+.cell.sand { background: linear-gradient(165deg, #f0e5d3 0%, var(--sand) 55%, #d6c4a4 100%); box-shadow: 0 6px 0 var(--sand-d), inset 0 2px 0 rgba(255,255,255,.5); }
+.cell.has, .cell.item, .cell.mine { background: linear-gradient(170deg, #ffffff, #f6f0e6); }
+.cell.hit { background: linear-gradient(165deg, #5dc2b3, var(--teal)); }
