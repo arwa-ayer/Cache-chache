@@ -68,6 +68,8 @@
       h('input', { id: 'name', maxlength: 16, placeholder: 'Ton prénom', value: state.name, autocomplete: 'off' }),
       h('button', { class: 'btn primary wide', onclick: () => { const n = readName(); if (n) send({ type: 'create', name: n }); } },
         'Créer une partie'),
+      h('button', { class: 'btn ghost wide', onclick: () => { const n = readName(); if (n) send({ type: 'solo', name: n }); } },
+        'Jouer contre l’ordi'),
       h('div', { class: 'or' }, 'ou'),
       h('div', { class: 'row' }, codeInput,
         h('button', {

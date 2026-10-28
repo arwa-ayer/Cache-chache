@@ -57,7 +57,7 @@ function newCode() {
 }
 
 function newRoom(code) {
-  return { code, players: [], phase: 'waiting', round: 0, result: null };
+  return { code, players: [], phase: 'waiting', round: 0, result: null, bot: false, botTimer: null };
 }
 
 // Chaque joueur a sa propre grille cachée (board) et ses propres devinettes (guesses) sur l'autre grille
@@ -72,10 +72,50 @@ function resetPlayer(p) {
   p.done = false;  // plus de devinette possible (3 trouvés ou erreurs épuisées)
 }
 
+const BOT_NAME = "L'ordi 🤖";
+
 function startRound(room) {
   room.phase = 'placing';
   room.result = null;
   room.players.forEach(resetPlayer);
+  room.players.forEach(p => { if (p.bot) botPlace(p); });
+}
+
+// L'ordi cache 3 objets au hasard sur sa grille
+function botPlace(bot) {
+  const cells = shuffle(Array.from({ length: GRID }, (_, i) => i)).slice(0, ITEMS);
+  const emojis = pickOptions([]).slice(0, ITEMS);
+  cells.forEach((c, k) => { bot.board[c] = emojis[k]; });
+  bot.used = [...emojis];
+  bot.options = [];
+  bot.validated = true;
+}
+
+// Une devinette (joueur ou ordi)
+function doGuess(room, me, opp, cell) {
+  if (room.phase !== 'guessing' || me.done || me.guesses[cell]) return;
+  if (opp.board[cell]) { me.guesses[cell] = 'hit'; me.found++; }
+  else { me.guesses[cell] = 'miss'; me.misses++; }
+  if (me.found === ITEMS) endRound(room, me, 'found');
+  else if (me.misses >= MAX_MISSES) {
+    me.done = true;
+    if (opp.done) endRound(room, null, 'draw');
+  }
+}
+
+// L'ordi devine une case toutes les 1,4 à 3 secondes
+function kickBot(room) {
+  if (!room.bot || room.botTimer || room.phase !== 'guessing') return;
+  const bot = room.players.find(p => p.bot);
+  const human = room.players.find(p => !p.bot);
+  if (!bot || !human || bot.done) return;
+  room.botTimer = setTimeout(() => {
+    room.botTimer = null;
+    if (room.phase !== 'guessing' || bot.done) return;
+    const hidden = Array.from({ length: GRID }, (_, i) => i).filter(i => !bot.guesses[i]);
+    if (hidden.length) doGuess(room, bot, human, hidden[crypto.randomInt(hidden.length)]);
+    broadcast(room);
+  }, 1400 + Math.random() * 1600);
 }
 
 function endRound(room, winner, reason) {
@@ -133,7 +173,8 @@ function viewFor(room, me) {
 }
 
 function broadcast(room) {
-  for (const p of room.players) send(p.ws, { type: 'state', state: viewFor(room, p) });
+  for (const p of room.players) if (!p.bot) send(p.ws, { type: 'state', state: viewFor(room, p) });
+  kickBot(room);
 }
 
 // ---------- logique de salle ----------
@@ -196,16 +237,8 @@ function handleAction(ws, msg) {
       }
       break;
     case 'guess': {
-      if (room.phase !== 'guessing' || me.done) break;
       const { cell } = msg;
-      if (!Number.isInteger(cell) || cell < 0 || cell >= GRID || me.guesses[cell]) break;
-      if (opp.board[cell]) { me.guesses[cell] = 'hit'; me.found++; }
-      else { me.guesses[cell] = 'miss'; me.misses++; }
-      if (me.found === ITEMS) endRound(room, me, 'found');
-      else if (me.misses >= MAX_MISSES) {
-        me.done = true;
-        if (opp.done) endRound(room, null, 'draw');
-      }
+      if (Number.isInteger(cell) && cell >= 0 && cell < GRID) doGuess(room, me, opp, cell);
       break;
     }
     case 'next':
@@ -222,11 +255,34 @@ function handleAction(ws, msg) {
   broadcast(room);
 }
 
+function handleSolo(ws, msg) {
+  if (ws.roomCode) return fail(ws, 'Tu es déjà dans une partie');
+  const name = cleanName(msg.name);
+  if (!name) return fail(ws, 'Entre ton prénom');
+  const room = newRoom(newCode());
+  room.bot = true;
+  rooms.set(room.code, room);
+  const me = { id: crypto.randomUUID(), name, ws, score: 0, bot: false };
+  const bot = { id: crypto.randomUUID(), name: BOT_NAME, ws: null, score: 0, bot: true };
+  resetPlayer(me);
+  resetPlayer(bot);
+  room.players.push(me, bot);
+  ws.roomCode = room.code;
+  send(ws, { type: 'joined', code: room.code });
+  room.round = 1;
+  startRound(room);
+  broadcast(room);
+}
+
 function leave(ws) {
   const room = rooms.get(ws.roomCode);
   if (!room) return;
   room.players = room.players.filter(p => p.ws !== ws);
-  if (room.players.length === 0) { rooms.delete(room.code); return; }
+  if (!room.players.some(p => !p.bot)) {
+    clearTimeout(room.botTimer);
+    rooms.delete(room.code);
+    return;
+  }
   room.phase = 'waiting';
   room.round = 0;
   room.result = null;
@@ -243,6 +299,7 @@ wss.on('connection', ws => {
     try { msg = JSON.parse(raw); } catch { return; }
     if (msg.type === 'create') return handleJoin(ws, msg, true);
     if (msg.type === 'join') return handleJoin(ws, msg, false);
+    if (msg.type === 'solo') return handleSolo(ws, msg);
     handleAction(ws, msg);
   });
   ws.on('close', () => leave(ws));
