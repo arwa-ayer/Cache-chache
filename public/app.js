@@ -374,6 +374,7 @@
   }
 
   function render() {
+    app.classList.toggle('in-game', !!state.view && state.view.phase !== 'waiting');
     if (!state.view) { root = null; app.replaceChildren(lobby()); return; }
     if (state.view.phase === 'waiting') { root = null; app.replaceChildren(waiting()); return; }
     if (!root || !app.contains(root)) {

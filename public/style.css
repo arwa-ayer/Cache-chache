@@ -278,3 +278,36 @@ main { padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(40p
 .fb, .fb.ok, .fb.ko, .fb.warn, .fb.info { background: none; padding: 2px 0; border-radius: 0; }
 .tname { white-space: nowrap; min-width: 62px; width: auto; }
 .tally-none { display: none; }
+
+/* ===== Écran de jeu sans défilement : tient dans la hauteur visible d'un iPhone (≈ 680 px avec la barre Safari) ===== */
+main { min-height: 100vh; min-height: 100dvh; }
+main.in-game { justify-content: flex-start; padding: 8px 12px; gap: 0; }
+.game { gap: 8px; }
+.guidebox { padding: 8px 12px; }
+.tallies { padding: 6px 10px; gap: 4px; }
+.label { line-height: 1.2; }
+.small-label { line-height: 1.2; }
+.zone { gap: 4px; }
+.who { padding: 6px 12px; }
+.round { padding: 6px 10px; }
+.grid { padding: 8px; gap: 6px; }
+.grid .cell { aspect-ratio: auto; height: clamp(44px, calc((100dvh - 400px) / 3), 64px); }
+.grid.small { padding: 6px; gap: 4px; border-radius: 18px; }
+.grid.small .cell { height: clamp(20px, calc((100dvh - 540px) / 3), 28px); border-radius: 8px; }
+.quit { min-height: 40px; padding: 6px 14px; }
+.opts { gap: 8px; }
+.opt { width: 52px; height: 52px; }
+.cell { overflow: hidden; }
+.grid .cell { height: clamp(40px, calc((100dvh - 330px) / 3), 84px); }
+.grid.small .cell { height: clamp(20px, calc((100dvh - 540px) / 3), 28px); }
+.grid.small .obj { width: 100%; height: 100%; }
+.grid.small .obj svg { overflow: hidden; }
+.grid.small .cell { aspect-ratio: auto; }
+.opt { width: clamp(40px, 6.6dvh, 52px); height: clamp(40px, 6.6dvh, 52px); font-size: clamp(22px, 4.4dvh, 30px); }
+.opts { gap: 6px; }
+.panel { padding: 12px; gap: 8px; }
+.panel .lead { margin: 0; }
+.grid.small .obj { width: 24px; height: 24px; }
+.grid.small .obj svg { overflow: visible; }
+.grid.small .cell { justify-items: center; }
+.grid.small .badge { width: 16px; height: 16px; top: 1px; right: 1px; border-width: 1px; font-size: 12px; }
