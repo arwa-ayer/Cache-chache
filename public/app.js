@@ -290,7 +290,6 @@
       root.append(slots[name]);
       keys[name] = null;
     }
-    slots.foot.replaceChildren(h('button', { class: 'quit', onclick: () => location.reload() }, 'Quitter'));
   }
 
   function put(name, key, build) {
@@ -370,7 +369,8 @@
       keys.layer = null;
     }
 
-    put('foot', JSON.stringify([state.error]), () => h('div', { class: 'foot' }, errorBox()));
+    put('foot', JSON.stringify([state.error]), () => h('div', { class: 'foot' }, errorBox(),
+      h('button', { class: 'quit', onclick: () => location.reload() }, 'Quitter')));
   }
 
   function render() {

@@ -311,3 +311,40 @@ main.in-game { justify-content: flex-start; padding: 8px 12px; gap: 0; }
 .grid.small .obj svg { overflow: visible; }
 .grid.small .cell { justify-items: center; }
 .grid.small .badge { width: 16px; height: 16px; top: 1px; right: 1px; border-width: 1px; font-size: 12px; }
+
+/* ===== App Store : zones de sécurité iPhone (encoche, barre du bas) ===== */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+main.in-game {
+  height: 100dvh;
+  min-height: 0;
+  padding: max(8px, var(--sat)) max(12px, var(--sar)) max(8px, var(--sab)) max(12px, var(--sal));
+}
+.grid .cell { height: clamp(40px, calc((100dvh - 330px - var(--sat) - var(--sab)) / 3), 84px); }
+.grid.small .cell { height: clamp(20px, calc((100dvh - 540px - var(--sat) - var(--sab)) / 3), 28px); }
+.opt { width: clamp(40px, calc((100dvh - var(--sat) - var(--sab)) * 0.066), 52px); height: clamp(40px, calc((100dvh - var(--sat) - var(--sab)) * 0.066), 52px); }
+
+/* Écrans courts (iPhone SE, 375x667) : on compacte les éléments pour tout garder sans défilement */
+@media (max-height: 720px) {
+  .game { gap: 6px; }
+  .who { padding: 4px 10px; font-size: 14px; }
+  .who span { padding: 1px 7px; }
+  .round { padding: 4px 8px; }
+  .guidebox { padding: 6px 10px; }
+  .status { font-size: 15px; }
+  .fb { font-size: 14px; }
+  .tallies { padding: 4px 8px; gap: 2px; }
+  .tl i { width: 20px; height: 20px; }
+  .tl.sm i { width: 16px; height: 16px; }
+  .panel { padding: 8px 12px; gap: 6px; }
+  .panel .lead { font-size: 15px; }
+  .btn { padding: 10px 14px; font-size: 16px; }
+  .row { gap: 8px; }
+  .quit { min-height: 36px; padding: 4px 10px; }
+  .grid { padding: 6px; }
+  .label { font-size: 14px; }
+}
